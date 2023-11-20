@@ -23,11 +23,20 @@ contract CryptoVandalsBlackMarket is ERC721, ERC721Enumerable, Ownable {
 
     uint16 public constant totalVandals = 5250;
     uint16 public constant maxVandalsPurchase = 20;
+    uint64 public constant mintPrice = 7000000000000000; // 0.007 ether
 
     uint256 private mintedVandals;
 
     using Counters for Counters.Counter;
     Counters.Counter private _tokenIdCounter;
+
+    struct LegacyMintInfo {
+        uint256[] tokens;
+        bool hasMinted;
+    }
+
+    mapping(address => LegacyMintInfo) public legacyMintInfo;
+
     using Strings for uint256;
     using SafeMath for uint256;
 
@@ -41,27 +50,48 @@ contract CryptoVandalsBlackMarket is ERC721, ERC721Enumerable, Ownable {
         _baseTokenURI = baseURI;
     }
 
-    function getVandal(uint16 numVandals) public {
+    function getVandal(uint16 numVandals) external payable {
         require(
-            numVandals <= maxVandalsPurchase,
-            "You can mint up to 20 Vandals per transaction"
+            numVandals > 0 && numVandals <= maxVandalsPurchase,
+            "Invalid number of Vandals to mint"
         );
         require(
             totalSupply().add(numVandals) <= totalVandals,
             "All Vandals are minted"
         );
+        require(
+            msg.value == numVandals * mintPrice,
+            "Incorrect Ether value sent"
+        );
+
         for (uint16 i = 0; i < numVandals; i++) {
-            uint256 tokenId = _tokenIdCounter.current();
+            uint256 tokenId = _tokenIdCounter.current() + 250; // Start from ID 250
+            require(tokenId < totalVandals, "Token ID out of range");
             _tokenIdCounter.increment();
             _safeMint(msg.sender, tokenId);
         }
     }
 
+    function legacyGetVandal(uint256[] calldata tokenIds) external {
+        LegacyMintInfo storage info = legacyMintInfo[msg.sender];
+
+        require(
+            !info.hasMinted && tokenIds.length > 0,
+            "Invalid legacy mint request"
+        );
+
+        for (uint256 i = 0; i < tokenIds.length; i++) {
+            require(tokenIds[i] < 250, "Invalid token ID for legacy minting");
+            _safeMint(msg.sender, tokenIds[i]);
+        }
+
+        info.tokens = tokenIds;
+        info.hasMinted = true;
+    }
+
     function vandalsRemained() public view returns (uint256) {
         uint256 vandalsMinted = totalSupply();
-        uint256 _vandalsRemained = uint256(totalVandals).sub(
-            vandalsMinted
-        );
+        uint256 _vandalsRemained = uint256(totalVandals).sub(vandalsMinted);
         if (vandalsMinted == 0) {
             return totalVandals;
         } else {
