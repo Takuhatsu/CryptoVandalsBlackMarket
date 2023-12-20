@@ -11,10 +11,6 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/Counters.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
 
-/****************************************************
- *                              CryptoVandals™ 2023 *
- ****************************************************/
-
 contract CryptoVandalsBlackMarket is ERC721, ERC721Enumerable, Ownable {
     string internal nftName = "CryptoVandals";
     string internal nftSymbol = "CV";
@@ -23,19 +19,27 @@ contract CryptoVandalsBlackMarket is ERC721, ERC721Enumerable, Ownable {
 
     uint16 public constant totalVandals = 5250;
     uint16 public constant maxVandalsPurchase = 20;
-    uint64 public constant mintPrice = 7000000000000000; // 0.007 ether
+    uint64 public mintPrice;
+    uint64 public legacyMintPrice;
 
     uint256 private mintedVandals;
+
+    bool public legacyActive;
+
+    modifier legacyIsActive() {
+        require(legacyActive, "Legacy minting is not active");
+        _;
+    }
 
     using Counters for Counters.Counter;
     Counters.Counter private _tokenIdCounter;
 
+    // Tracking of legacy minted tokens
     struct LegacyMintInfo {
         uint256[] tokens;
-        bool hasMinted;
     }
 
-    mapping(address => LegacyMintInfo) public legacyMintInfo;
+    mapping(address => LegacyMintInfo) legacyMintInfo;
 
     using Strings for uint256;
     using SafeMath for uint256;
@@ -48,6 +52,21 @@ contract CryptoVandalsBlackMarket is ERC721, ERC721Enumerable, Ownable {
 
     function setBaseURI(string memory baseURI) public onlyOwner {
         _baseTokenURI = baseURI;
+    }
+
+    // Toggle the state of legacy minting
+    function toggleLegacyActivation() external onlyOwner {
+        legacyActive = !legacyActive;
+    }
+
+    // Set the mint price for regular minting
+    function setMintPrice(uint64 newPrice) external onlyOwner {
+        mintPrice = newPrice;
+    }
+
+    // Set the mint price for legacy minting
+    function setLegacyMintPrice(uint64 newPrice) external onlyOwner {
+        legacyMintPrice = newPrice;
     }
 
     function getVandal(uint16 numVandals) external payable {
@@ -72,12 +91,16 @@ contract CryptoVandalsBlackMarket is ERC721, ERC721Enumerable, Ownable {
         }
     }
 
-    function legacyGetVandal(uint256[] calldata tokenIds) external {
+    function legacyGetVandal(uint256[] calldata tokenIds)
+        external
+        payable
+        legacyIsActive
+    {
         LegacyMintInfo storage info = legacyMintInfo[msg.sender];
 
         require(
-            !info.hasMinted && tokenIds.length > 0,
-            "Invalid legacy mint request"
+            msg.value == tokenIds.length * legacyMintPrice,
+            "Incorrect Ether value sent"
         );
 
         for (uint256 i = 0; i < tokenIds.length; i++) {
@@ -86,7 +109,6 @@ contract CryptoVandalsBlackMarket is ERC721, ERC721Enumerable, Ownable {
         }
 
         info.tokens = tokenIds;
-        info.hasMinted = true;
     }
 
     function vandalsRemained() public view returns (uint256) {
@@ -116,9 +138,12 @@ contract CryptoVandalsBlackMarket is ERC721, ERC721Enumerable, Ownable {
         super._beforeTokenTransfer(from, to, tokenId, batchSize);
     }
 
-    function supportsInterface(
-        bytes4 interfaceId
-    ) public view override(ERC721, ERC721Enumerable) returns (bool) {
+    function supportsInterface(bytes4 interfaceId)
+        public
+        view
+        override(ERC721, ERC721Enumerable)
+        returns (bool)
+    {
         return super.supportsInterface(interfaceId);
     }
 }
